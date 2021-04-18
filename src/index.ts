@@ -6,7 +6,45 @@ const usage = `Arguments: [runDurationSeconds] [refreshIntervalSeconds]`;
 const apiUrl = "https://api.coindesk.com/v1/bpi/currentprice.json";
 
 async function fetchAndPrint(deadlineMs: number) {
-    // TODO: Implementation
+    // Set deadline to cancel requests after the specified interval, preventing previous requests from completing
+    // after the next request has already gone out (i.e. when response time exceeds the script interval)
+    const abortController = new AbortController();
+    setTimeout(() => abortController.abort(), deadlineMs);
+    try {
+        const res = await fetch(apiUrl, {
+            signal: abortController.signal
+        });
+        if (res.ok) {
+            // Parse response body JSON and create table
+            const body = await res.json();
+            const timestamp = body.time.updated;
+            const table = new Table({
+                head: ['Currency', 'Symbol', 'Rate']
+                , colWidths: [10, 8, 16]
+            });
+
+            // Extract relevant data from body
+            for (let key of Object.keys(body.bpi)) {
+                const item = body.bpi[key];
+                const symbol = he.decode(item.symbol);
+                const rate = item.rate_float.toFixed(3);
+                table.push([item.code, symbol, rate])
+            }
+
+            console.log(`\nReport for ${timestamp}:\n${table.toString()}\n`);
+        } else {
+            console.error(`Response Code ${res.status}`)
+            // Try to print error as JSON, but fallback to text if it cannot be parsed
+            const body = await res.text();
+            try {
+                console.error(JSON.parse(body));
+            } catch {
+                console.error(body);
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 async function runScript(durationMs: number, intervalMs: number) {
